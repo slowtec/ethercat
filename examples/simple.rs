@@ -11,56 +11,151 @@ pub fn main() -> Result<(), std::io::Error> {
         product_code: 0x4f911c30,
     };
 
-    // Index of digital output 0 (UR20-RO-CO-255)
-    let rx_entry_index_0 = ec::PdoEntryIndex {
-        index: 0x7000,
-        subindex: 1,
-    };
+    let rx_entry_indexes: Vec<Vec<_>> = vec![
+        // Indexes of digital coupler outputs
+        (0..=15)
+            .into_iter()
+            .map(|i| ec::PdoEntryIndex {
+                index: 0xF200,
+                subindex: i + 1,
+            })
+            .collect(),
+        // Indexes of digital outputs 0-3 (UR20-RO-CO-255)
+        (0..=4)
+            .into_iter()
+            .map(|i| match i {
+                0..=3 => ec::PdoEntryIndex {
+                    index: 0x7000,
+                    subindex: i + 1,
+                },
+                4 => ec::PdoEntryIndex {
+                    index: 0x0000,
+                    subindex: 0,
+                },
+                _ => unreachable!(),
+            })
+            .collect(),
+        // Indexes of digital outputs 0-15 (UR20-16DO-P)
+        (0..=15)
+            .into_iter()
+            .map(|i| ec::PdoEntryIndex {
+                index: 0x7010,
+                subindex: i + 1,
+            })
+            .collect(),
+    ];
 
-    // Index of digital output 3 (UR20-RO-CO-255)
-    let rx_entry_index_3 = ec::PdoEntryIndex {
-        index: 0x7000,
-        subindex: 4,
-    };
+    let tx_entry_indexes: Vec<Vec<_>> = vec![
+        // Indexes of digital coupler inputs
+        (0..=15)
+            .into_iter()
+            .map(|i| ec::PdoEntryIndex {
+                index: 0xF100,
+                subindex: i + 1,
+            })
+            .collect(),
+        // Index of module state (UR20-RO-CO-255)
+        vec![ec::PdoEntryIndex {
+            index: 0x6000,
+            subindex: 1,
+        }],
+        // Index of module state (UR20-16DO-P)
+        vec![ec::PdoEntryIndex {
+            index: 0x6010,
+            subindex: 1,
+        }],
+    ];
 
-    // Index of module state (UR20-RO-CO-255)
-    let tx_entry_index = ec::PdoEntryIndex {
-        index: 0x6000,
-        subindex: 1,
-    };
-
-    // PDO entries of digital output 0 and 3
-    let rx_pdo_entries = vec![
-        ec::PdoEntryInfo {
-            index: rx_entry_index_0,
-            bit_length: 1,
-        },
-        ec::PdoEntryInfo {
-            index: rx_entry_index_3,
-            bit_length: 1,
-        },
+    let rx_pdo_entries: Vec<Vec<_>> = vec![
+        // PDO entries of coupler outputs
+        (0..=15)
+            .into_iter()
+            .map(|i| ec::PdoEntryInfo {
+                index: rx_entry_indexes[0][i],
+                bit_length: 1,
+            })
+            .collect(),
+        // PDO entries of digital output 0 and 3
+        (0..=4)
+            .into_iter()
+            .map(|i| match i {
+                0..=3 => ec::PdoEntryInfo {
+                    index: rx_entry_indexes[1][i],
+                    bit_length: 1,
+                },
+                4 => ec::PdoEntryInfo {
+                    index: rx_entry_indexes[1][i],
+                    bit_length: 4,
+                },
+                _ => unreachable!(),
+            })
+            .collect(),
+        // PDO entries of digital out 0..15  (UR20-16DO-P)
+        (0..=15)
+            .into_iter()
+            .map(|i| ec::PdoEntryInfo {
+                index: rx_entry_indexes[2][i],
+                bit_length: 1,
+            })
+            .collect(),
     ];
 
     // PDO entry of module state
-    let tx_pdo_entries = vec![ec::PdoEntryInfo {
-        index: tx_entry_index,
-        bit_length: 8,
-    }];
+    let tx_pdo_entries: Vec<Vec<_>> = vec![
+        (0..=15)
+            .into_iter()
+            .map(|i| ec::PdoEntryInfo {
+                index: tx_entry_indexes[0][i],
+                bit_length: 1,
+            })
+            .collect(),
+        (0..=0)
+            .into_iter()
+            .map(|i| ec::PdoEntryInfo {
+                index: tx_entry_indexes[1][i],
+                bit_length: 8,
+            })
+            .collect(),
+        (0..=0)
+            .into_iter()
+            .map(|i| ec::PdoEntryInfo {
+                index: tx_entry_indexes[2][i],
+                bit_length: 8,
+            })
+            .collect(),
+    ];
 
-    // PDO of digital outputs 0 and 3
-    let rx_pdo_info = ec::PdoInfo {
-        index: 0x1600,
-        entries: &rx_pdo_entries,
-    };
+    // RX PDOs of outputs
+    let rx_pdos = vec![
+        ec::PdoInfo {
+            index: 0x16FF,
+            entries: &rx_pdo_entries[0],
+        },
+        ec::PdoInfo {
+            index: 0x1600,
+            entries: &rx_pdo_entries[1],
+        },
+        ec::PdoInfo {
+            index: 0x1601,
+            entries: &rx_pdo_entries[2],
+        },
+    ];
 
-    // PDO of module states
-    let tx_pdo_info = ec::PdoInfo {
-        index: 0x1A00,
-        entries: &tx_pdo_entries,
-    };
-
-    let rx_pdos = vec![rx_pdo_info];
-    let tx_pdos = vec![tx_pdo_info];
+    // TX PDOs of inputs
+    let tx_pdos = vec![
+        ec::PdoInfo {
+            index: 0x1AFF,
+            entries: &tx_pdo_entries[0],
+        },
+        ec::PdoInfo {
+            index: 0x1A00,
+            entries: &tx_pdo_entries[1],
+        },
+        ec::PdoInfo {
+            index: 0x1A01,
+            entries: &tx_pdo_entries[2],
+        },
+    ];
 
     // Sync masters
     let infos = vec![
@@ -71,21 +166,25 @@ pub fn main() -> Result<(), std::io::Error> {
     let mut config = master.configure_slave(ec::SlaveAddr::ByPos(0), slave_id)?;
     config.config_pdos(&infos)?;
 
-    let pos = config.register_pdo_entry(rx_entry_index_0, domain_handle)?;
-    println!(
-        "Position of RX entry {:X}.{} is {:?}",
-        rx_entry_index_0.index, rx_entry_index_0.subindex, pos
-    );
-    let pos = config.register_pdo_entry(rx_entry_index_3, domain_handle)?;
-    println!(
-        "Position of RX entry {:X}.{} is {:?}",
-        rx_entry_index_3.index, rx_entry_index_3.subindex, pos
-    );
-    let pos = config.register_pdo_entry(tx_entry_index, domain_handle)?;
-    println!(
-        "Position of TX entry {:X}.{} is {:?}",
-        tx_entry_index.index, tx_entry_index.subindex, pos
-    );
+    for pdos in &rx_entry_indexes {
+        for pdo in pdos {
+            let pos = config.register_pdo_entry(*pdo, domain_handle)?;
+            println!(
+                "Position of RX entry {:X}.{} is {:?}",
+                pdo.index, pdo.subindex, pos
+            );
+        }
+    }
+
+    for pdos in &tx_entry_indexes {
+        for pdo in pdos {
+            let pos = config.register_pdo_entry(*pdo, domain_handle)?;
+            println!(
+                "Position of TX entry {:X}.{} is {:?}",
+                pdo.index, pdo.subindex, pos
+            );
+        }
+    }
 
     let cfg_index = config.index();
     let cfg_info = master.get_config_info(cfg_index)?;
@@ -111,10 +210,11 @@ pub fn main() -> Result<(), std::io::Error> {
         println!("Received data: {:?}", data);
 
         // Toggle output 3 (bit 1)
-        data[0] ^= 0b_0000_0010;
+        data[2] ^= 0b_0000_0010;
+
         master.domain(domain_handle).queue()?;
         master.send()?;
 
-        thread::sleep(Duration::from_millis(100));
+        thread::sleep(Duration::from_millis(50));
     }
 }
