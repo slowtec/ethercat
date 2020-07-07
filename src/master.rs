@@ -2,6 +2,7 @@
 // This work is dual-licensed under Apache 2.0 and MIT terms.
 
 use crate::{ec, types::*, Result};
+use num_traits::FromPrimitive;
 use std::{
     collections::HashMap,
     ffi::CStr,
@@ -106,7 +107,6 @@ impl Master {
     pub fn activate(&mut self) -> Result<()> {
         let mut data = ec::ec_ioctl_master_activate_t::default();
         ioctl!(self, ec::ioctl::ACTIVATE, &mut data)?;
-
         self.map = unsafe {
             memmap::MmapOptions::new()
                 .len(data.process_data_size as usize)
@@ -212,11 +212,7 @@ impl Master {
             port.delay_to_next_dc = data.ports[i].delay_to_next_dc;
         }
         Ok(SlaveInfo {
-            name: unsafe {
-                CStr::from_ptr(data.name.as_ptr())
-                    .to_string_lossy()
-                    .into_owned()
-            },
+            name: c_array_to_string(data.name.as_ptr()),
             ring_pos: data.position,
             id: SlaveId {
                 vendor_id: data.vendor_id,
@@ -270,6 +266,49 @@ impl Master {
         Ok(SlaveConfig {
             master: self,
             index: data.config_index,
+        })
+    }
+
+    pub fn get_sdo(&mut self, slave_index: u16, sdo_position: u16) -> Result<SdoInfo> {
+        let mut sdo = ec::ec_ioctl_slave_sdo_t::default();
+        sdo.slave_position = slave_index;
+        sdo.sdo_position = sdo_position;
+        ioctl!(self, ec::ioctl::SLAVE_SDO, &mut sdo)?;
+        Ok(SdoInfo {
+            slave_position: sdo.slave_position,
+            position: sdo.sdo_position,
+            index: sdo.sdo_index,
+            max_subindex: sdo.max_subindex,
+            object_code: sdo.object_code,
+            name: c_array_to_string(sdo.name.as_ptr()),
+        })
+    }
+
+    pub fn get_sdo_entry(&mut self, slave_index: u16, addr: SdoEntryAddr) -> Result<SdoEntry> {
+        let mut entry = ec::ec_ioctl_slave_sdo_entry_t::default();
+        entry.slave_position = slave_index;
+        let (spec, sub) = match addr {
+            SdoEntryAddr::Position(pos, sub) => ((pos as i32) * -1, sub),
+            SdoEntryAddr::Index(idx, sub) => (idx as i32, sub),
+        };
+        entry.sdo_spec = spec;
+        entry.sdo_entry_subindex = sub;
+        ioctl!(self, ec::ioctl::SLAVE_SDO_ENTRY, &mut entry)?;
+        Ok(SdoEntry {
+            slave_position: entry.slave_position,
+            address: addr,
+            data_type: DataType::from_u16(entry.data_type).unwrap_or_else(|| {
+                let fallback = DataType::Raw;
+                log::error!(
+                    "Unknown data type (type value: {:X}): use '{:?}' as fallback",
+                    entry.data_type,
+                    fallback
+                );
+                fallback
+            }),
+            bit_length: entry.bit_length,
+            access: SdoEntryAccess::from((entry.read_access, entry.write_access)),
+            description: c_array_to_string(entry.description.as_ptr()),
         })
     }
 
@@ -334,6 +373,25 @@ impl Master {
     // XXX missing: get_sync_manager, get_pdo, get_pdo_entry, write_idn, read_idn,
     // application_time, sync_reference_clock, sync_slave_clocks,
     // reference_clock_time, sync_monitor_queue, sync_monitor_process
+}
+
+fn c_array_to_string(data: *const i8) -> String {
+    unsafe { CStr::from_ptr(data).to_string_lossy().into_owned() }
+}
+
+#[test]
+fn test_c_array_to_string() {
+    let arr: [i8; 64] = [0_i8; 64];
+    assert_eq!(c_array_to_string(arr.as_ptr()), "");
+
+    let mut arr: [i8; 64] = [0_i8; 64];
+    [80_i8, 114, 111, 100, 117, 99, 116, 32, 99, 111, 100, 101]
+        .iter()
+        .enumerate()
+        .for_each(|(idx, v)| {
+            arr[idx] = *v;
+        });
+    assert_eq!(c_array_to_string(arr.as_ptr()), "Product code");
 }
 
 pub struct SlaveConfig<'m> {
