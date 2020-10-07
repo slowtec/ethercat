@@ -491,6 +491,7 @@ impl Master {
         Ok(())
     }
 
+    #[cfg(feature = "sncn")]
     pub fn dict_upload(&mut self, slave_pos: SlavePos) -> Result<()> {
         let mut data = ec::ec_ioctl_slave_dict_upload_t::default();
         data.slave_position = u16::from(slave_pos);
