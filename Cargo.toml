@@ -25,6 +25,9 @@ thiserror = "1.0"
 ethercat-esi = "0.1"
 env_logger = "0.8"
 
+[patch.crates-io]
+ethercat-types = { git = "https://github.com/ethercat-rs/ethercat-types", rev = "4f3513" }
+
 [features]
 default = []
 
